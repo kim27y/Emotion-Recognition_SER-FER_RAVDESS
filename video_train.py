@@ -1,10 +1,9 @@
 import numpy as np
-# import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import random
 from datetime import datetime
-
+import argparse
 import tensorflow as tf
 
 # Keras module and tools
@@ -17,6 +16,32 @@ from keras.optimizers import Adam
 from keras_cv.layers import RandomCutout
 import keras_tuner
 
+parser = argparse.ArgumentParser(description='Start Training')
+parser.add_argument('--data_path',
+                    type=str,
+                    default='./Datasets',
+                    help='data sort, train or test or all')
+parser.add_argument('--batch_size',
+                    type=str,
+                    default='64',
+                    help='data sort, train or test or all')
+parser.add_argument('--epoch',
+                    type=str,
+                    default='10',
+                    help='data sort, train or test or all')
+parser.add_argument('--lr',
+                    type=str,
+                    default='0.001',
+                    help='data sort, train or test or all')
+parser.add_argument('--model',
+                    type=str,
+                    default='model5',
+                    help='data sort, train or test or all')
+
+
+
+
+
 if tf.test.gpu_device_name(): 
     print('Default GPU Device:{}'.format(tf.test.gpu_device_name()))
 else:
@@ -24,8 +49,6 @@ else:
     
 emotions_tras = {1:1, 2:4, 3:5, 4:0, 5:3, 6:2, 7:6} # to match the audio stream labels
 emotions = {0:'angry', 1:'calm', 2:'disgust', 3:'fear', 4:'happy', 5:'sad', 6:'surprise'}
-
-path_frames_face_BW = os.path.join('Datasets','RAVDESS_frames_face_BW')
 
 height_orig = 224
 width_orig = 224
@@ -37,11 +60,11 @@ num_classes = len(emotions)
 val_actors = ['19', '20']
 test_actors = ['21', '22', '23', '24']
 
-def make_dataset():
+def make_dataset(paths):
     filenames_train = [] # train
     filenames_val = [] # validation
 
-    for (dirpath, dirnames, fn) in os.walk(path_frames_face_BW):
+    for (dirpath, dirnames, fn) in os.walk(paths):
         if fn != []:
             class_temp = int(fn[0].split('-')[2]) - 1
             if class_temp != 0:                                                     # exclude 'neutral' label
@@ -117,14 +140,14 @@ def load_dataset(filenames, batch_size,model):
     labels = tf.data.Dataset.from_tensor_slices(labels)
 
     ds = tf.data.Dataset.zip((images, labels))
-    ds = configure_for_performance(ds)
+    ds = configure_for_performance(ds,batch_size)
 
     frame_number = len(filenames_sampled)
     step_per_epoch = frame_number // batch_size
     print('frames number:', frame_number, '\nbatch size:', batch_size, '\nbatch number:', step_per_epoch)
     return ds, step_per_epoch
 
-def Model(model):
+def Models(model):
     if model == 'model4':
         dropout = 0.5
         
@@ -192,10 +215,10 @@ def Model(model):
     return net_4
 
 def train(train_data, val_data,batch_size, epochs=10, lr=0.001, momentum=0.5,model='model4'):
-    train_ds, step_per_epoch_train = load_dataset(train_data, batch_size)
-    val_ds, step_per_epoch_val = load_dataset(val_data, batch_size)
+    train_ds, step_per_epoch_train = load_dataset(train_data, batch_size, model)
+    val_ds, step_per_epoch_val = load_dataset(val_data, batch_size, model)
     
-    checkpoint_filepath = f'./Models/Video_stream/video_model_{datetime.now().strftime("%d-%m-%y_%H-%M")}_' + '[{val_sparse_categorical_accuracy:.4f}]_face.hdf5'
+    checkpoint_filepath = f'./Models/Video_stream/video_model_{datetime.now().strftime("%d-%m-%y_%H-%M")}_{model}_' + '[{val_sparse_categorical_accuracy:.4f}]_face.hdf5'
 
     reduce_lr = ReduceLROnPlateau(monitor="val_sparse_categorical_accuracy", factor=0.5, patience=2, verbose=1)
     early_stop = EarlyStopping( monitor="val_sparse_categorical_accuracy", patience=4, verbose=1, restore_best_weights=True)
@@ -206,7 +229,7 @@ def train(train_data, val_data,batch_size, epochs=10, lr=0.001, momentum=0.5,mod
     
 
     
-    net = Model(model)
+    net = Models(model)
     
     net.compile(
         optimizer = Adam(learning_rate=lr),
@@ -221,8 +244,7 @@ def train(train_data, val_data,batch_size, epochs=10, lr=0.001, momentum=0.5,mod
                     batch_size=batch_size,
                     steps_per_epoch=step_per_epoch_train,
                     validation_steps=step_per_epoch_val,
-                    # callbacks=[reduce_lr, early_stop, save_best],
-                    # callbacks=[save_best],
+                    callbacks=[reduce_lr, early_stop, save_best],
                     verbose=1)
         
     net.evaluate(val_ds,
@@ -232,5 +254,26 @@ def train(train_data, val_data,batch_size, epochs=10, lr=0.001, momentum=0.5,mod
     return history
 
     
+if __name__ == '__main__':
+    args = parser.parse_args()
+    path = args.data_path
+    batch_size = int(args.batch_size)
+    epoch = int(args.epoch)
+    lr = float(args.lr)
+    model = args.model
     
+    filenames_train, filenames_val = make_dataset(os.path.join(path,'RAVDESS_frames_face_BW'))
     
+    history = train(filenames_train, filenames_val, batch_size, epochs=10, lr=0.001, momentum=0.5,model='model4')
+    
+    fig1 = plt.gcf()
+    plt.plot(history.history['sparse_categorical_accuracy'])
+    plt.plot(history.history['val_sparse_categorical_accuracy'])
+    plt.axis(ymin=0, ymax=1)
+    plt.grid()
+    plt.title('Model Accuracy')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epochs')
+    plt.legend(['train', 'validation'])
+    # plt.savefig('Plots/model5_accuracy.png')
+    plt.show()
