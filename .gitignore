@@ -1,4 +1,6 @@
 # Datasets
+Datasets/
+Datasets/**/*
 RAVDESS
 RAVDESS_frames
 RAVDESS_frames_black

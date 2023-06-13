@@ -5,6 +5,7 @@ import cv2
 import random
 import argparse
 import numpy as np
+import moviepy.editor as mp
 from tensorflow import keras
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
@@ -171,6 +172,20 @@ def onlyfaceBW(filenames, paths, skip=1):
                 count += 1
         finally:
             cap.release()
+
+def audiot_extract(filenames, paths):
+    for count, video in tqdm(enumerate(zip(filenames, paths)), desc='audio extract', bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]'):
+        # Gather all its frames
+        filename, input_path, output_path = video[0], video[1], video[1].replace('RAVDESS', 'RAVDESS_frames_face_BW')
+        
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        
+        clip = mp.VideoFileClip(video[1]+'.mp4')
+        audio = clip.audio
+        
+        audio.write_audiofile(output_path, f'{filename}.wav')
+
         
 def sampling(list, num_frames_desired):
     tot = []
@@ -223,6 +238,7 @@ def preprocess(path, task, random_seed):
     mean_face = mean_face/255
     mean_face = np.expand_dims(mean_face, axis=2)
     np.save(os.path.join('Other','mean_face.npy'), mean_face)
+    audiot_extract(filenames, paths)
 
 if __name__ == "__main__":
     args = parser.parse_args()
